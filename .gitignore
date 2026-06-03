@@ -5,7 +5,7 @@
 # Environment files (never commit secrets)
 .env
 .env.*
-!.env.example
+.env.example
 
 # OS-generated files
 .DS_Store
@@ -135,7 +135,7 @@ pnpm-debug.log*
 # Environment
 frontend/.env
 frontend/.env.*
-!frontend/.env.example
+frontend/.env.example
 
 # ==========================
 # Miscellaneous
