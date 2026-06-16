@@ -20,6 +20,7 @@ interface Message {
   citations?: CitationRef[];
   result?: Record<string, any>;
   ics_content?: string;
+  tools_data?: Record<string, any> | null;
 }
 
 interface CitationRef {
@@ -145,6 +146,7 @@ export default function NotebookWorkspace() {
               sources: m.metadata?.sources || [],
               citations: m.metadata?.citations || [],
               result: m.metadata?.result || undefined,
+              tools_data: m.metadata?.tools_data || null,
             }));
             setMessages(mapped);
             const lastAssistant = [...data.messages].reverse().find(m => m.role === "assistant");
@@ -225,6 +227,7 @@ export default function NotebookWorkspace() {
         citations: data.citations || [],
         result: data.result || undefined,
         ics_content: data.ics_content || undefined,
+        tools_data: data.tools_data || null,
       }]);
     } catch (err) {
       const detail = axios.isAxiosError(err) && err.response?.data?.detail

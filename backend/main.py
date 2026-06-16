@@ -525,12 +525,15 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
             "workflow_log": result.get("workflow_log", []),
             "notebook_id": notebook_id,
             "result": result.get("result", {}),  # Includes schedule data for ICS export
+            "tools_data": result.get("tools_data"),
         },
     )
 
     return {
         **result,
         "session_id": session_id,
+        "tools_data": result.get("tools_data"),
+        "has_tools": bool(result.get("tools_data")),
     }
 
 

@@ -96,6 +96,10 @@ class NotebookState(TypedDict, total=False):
   critique_complete: bool
   editor_complete: bool
 
+  # External tool enrichment
+  tool_triggers: List[str]           # e.g. ["wikipedia", "github"]
+  tools_data: Optional[Dict[str, Any]]  # {"wikipedia": {...}, "github": [...]}
+
 
 def create_initial_state(
   notebook_id: str,
@@ -148,4 +152,6 @@ def create_initial_state(
     summary_complete=False,
     critique_complete=False,
     editor_complete=False,
+    tool_triggers=[],
+    tools_data=None,
   )

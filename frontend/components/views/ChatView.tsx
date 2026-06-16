@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { ArrowRight, MessageSquare, RefreshCw, Bot } from "lucide-react";
+import ToolsPanel, { ToolsData } from "./chat/ToolsPanel";
 
 type Mode = "chat" | "research" | "quiz" | "roadmap";
 
@@ -9,6 +10,7 @@ interface Message {
   mode?: Mode;
   sources?: string[];
   citations?: CitationRef[];
+  tools_data?: ToolsData | null;
 }
 
 interface CitationRef {
@@ -269,7 +271,12 @@ export default function ChatView({
                 }`}>
                 {msg.role === "user"
                   ? <div className="whitespace-pre-wrap">{msg.content}</div>
-                  : renderContent(msg, idx)
+                  : (
+                    <>
+                      {renderContent(msg, idx)}
+                      {msg.tools_data && <ToolsPanel toolsData={msg.tools_data} />}
+                    </>
+                  )
                 }
               </div>
             </div>

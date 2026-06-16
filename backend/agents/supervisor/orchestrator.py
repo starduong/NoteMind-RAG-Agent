@@ -84,6 +84,7 @@ class NotebookOrchestrator:
                 },
                 "mode": normalized_mode,
                 "notebook_id": notebook_id,
+                "tools_data": final_state.get("tools_data"),
             }
         except Exception as e:
             return {
