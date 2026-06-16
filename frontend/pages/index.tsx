@@ -16,6 +16,9 @@ import {
   MoreHorizontal,
   PencilLine,
   Trash2,
+  FolderOpen,
+  FileText,
+  Zap,
 } from "lucide-react";
 import NotebookWorkspace from "../components/NotebookWorkspace";
 
@@ -46,6 +49,44 @@ function isMode(value: string): value is Mode {
   return value === "chat" || value === "research" || value === "quiz" || value === "roadmap";
 }
 
+const MODE_BADGES = {
+  research: {
+    label: "Research",
+    className: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    icon: Sparkles,
+    description: "Deep research & analysis"
+  },
+  quiz: {
+    label: "Quiz",
+    className: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    icon: Layers,
+    description: "Interactive learning"
+  },
+  roadmap: {
+    label: "Roadmap",
+    className: "bg-amber-50 text-amber-700 border-amber-200",
+    icon: Compass,
+    description: "Learning path planning"
+  },
+  chat: {
+    label: "Chat",
+    className: "bg-sky-50 text-sky-700 border-sky-200",
+    icon: MessageSquare,
+    description: "General conversation"
+  }
+};
+
+const PASTEL_THEMES = [
+  "bg-pink-50 text-pink-700",
+  "bg-emerald-50 text-emerald-700",
+  "bg-purple-50 text-purple-700",
+  "bg-sky-50 text-sky-700",
+  "bg-orange-50 text-orange-700",
+  "bg-indigo-50 text-indigo-700",
+  "bg-rose-50 text-rose-700",
+  "bg-teal-50 text-teal-700",
+];
+
 export default function Home() {
   const router = useRouter();
   const [sessions, setSessions] = useState<SessionDetail[]>([]);
@@ -60,65 +101,97 @@ export default function Home() {
   const hasWorkspaceParams = useMemo(() => {
     if (!router.isReady) return false;
     const { notebook_id, session_id } = router.query;
-    return (
-      (typeof notebook_id === "string" && notebook_id.length > 0) ||
-      (typeof session_id === "string" && session_id.length > 0)
-    );
+    return Boolean(notebook_id || session_id);
   }, [router.isReady, router.query]);
+
+  const getPastelTheme = (seed: string) => {
+    let hash = 0;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (hash << 5) - hash + seed.charCodeAt(i);
+      hash |= 0;
+    }
+    return PASTEL_THEMES[Math.abs(hash) % PASTEL_THEMES.length];
+  };
+
+  const formatDateTime = (isoString: string) => {
+    try {
+      return new Date(isoString).toLocaleString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    } catch {
+      return "";
+    }
+  };
+
+  const timeAgo = (isoString: string) => {
+    const diffMinutes = Math.max(1, Math.floor((Date.now() - new Date(isoString).getTime()) / 60000));
+    if (diffMinutes < 60) return `${diffMinutes} min ago`;
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffDays < 7) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    return formatDateTime(isoString);
+  };
+
+  const getModeBadge = (mode: Mode) => MODE_BADGES[mode] || MODE_BADGES.chat;
 
   const fetchDashboardData = async () => {
     try {
       setLoading(true);
+      const [notebooksRes, sessionsRes] = await Promise.all([
+        axios.get(`${API}/notebooks`),
+        axios.get(`${API}/sessions`)
+      ]);
 
-      const notebooksRes = await axios.get(`${API}/notebooks`);
       const notebooksList: Notebook[] = notebooksRes.data.notebooks || [];
-
       const notebooksMap: Record<string, string> = {};
       const notebookSourceMap: Record<string, number> = {};
+      
       notebooksList.forEach((nb) => {
         notebooksMap[nb.notebook_id] = nb.title;
         notebookSourceMap[nb.notebook_id] = nb.source_count || 0;
       });
 
-      const sessionsRes = await axios.get(`${API}/sessions`);
       const sessionIds: string[] = sessionsRes.data.sessions || [];
+      const details = await Promise.all(
+        sessionIds.map(async (sid) => {
+          try {
+            const { data } = await axios.get(`${API}/sessions/${sid}/history`);
+            const messages = data.messages || [];
+            const metadata = data.metadata || {};
 
-      const detailsPromises = sessionIds.map(async (sid) => {
-        try {
-          const detailRes = await axios.get(`${API}/sessions/${sid}/history`);
-          const historyData = detailRes.data;
-          const messages = historyData.messages || [];
-          const metadata = historyData.metadata || {};
+            let notebookId: string | null = null;
+            let mode: Mode = "chat";
 
-          let notebookId: string | null = null;
-          let mode: Mode = "chat";
-
-          for (let i = messages.length - 1; i >= 0; i--) {
-            const msg = messages[i];
-            if (msg.metadata) {
-              if (msg.metadata.notebook_id) notebookId = msg.metadata.notebook_id;
-              if (msg.metadata.mode && isMode(msg.metadata.mode)) mode = msg.metadata.mode;
-              if (notebookId) break;
+            for (let i = messages.length - 1; i >= 0; i--) {
+              const msg = messages[i];
+              if (msg.metadata) {
+                if (msg.metadata.notebook_id) notebookId = msg.metadata.notebook_id;
+                if (msg.metadata.mode && isMode(msg.metadata.mode)) mode = msg.metadata.mode;
+                if (notebookId) break;
+              }
             }
+
+            return {
+              sessionId: sid,
+              notebookId,
+              notebookTitle: notebookId ? (notebooksMap[notebookId] || "Deleted Notebook") : "General Workspace",
+              mode,
+              messageCount: metadata.message_count || messages.length,
+              sourceCount: notebookId ? (notebookSourceMap[notebookId] || 0) : 0,
+              lastUpdated: metadata.last_updated || new Date().toISOString(),
+              createdAt: metadata.created_at || new Date().toISOString(),
+            } as SessionDetail;
+          } catch {
+            return null;
           }
+        })
+      );
 
-          return {
-            sessionId: sid,
-            notebookId,
-            notebookTitle: notebookId ? (notebooksMap[notebookId] || "Notebook đã xóa") : "Workspace chung",
-            mode,
-            messageCount: metadata.message_count || messages.length,
-            sourceCount: notebookId ? (notebookSourceMap[notebookId] || 0) : 0,
-            lastUpdated: metadata.last_updated || new Date().toISOString(),
-            createdAt: metadata.created_at || new Date().toISOString(),
-          } as SessionDetail;
-        } catch (err) {
-          console.error(`Failed to fetch history for session ${sid}`, err);
-          return null;
-        }
-      });
-
-      const details = await Promise.all(detailsPromises);
       const validDetails = details.filter((d): d is SessionDetail => d !== null);
       validDetails.sort((a, b) => new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime());
       setSessions(validDetails);
@@ -135,14 +208,13 @@ export default function Home() {
   }, [router.isReady, hasWorkspaceParams]);
 
   const createNotebook = async () => {
-    const title = newNotebookTitle.trim() || "Notebook mới";
+    const title = newNotebookTitle.trim() || "New Notebook";
     try {
       setCreatingNotebook(true);
-      const res = await axios.post(`${API}/notebooks`, { title, description: "" });
+      const { data } = await axios.post(`${API}/notebooks`, { title, description: "" });
       setShowCreateModal(false);
       setNewNotebookTitle("");
-      const notebookId = res.data.notebook_id as string;
-      await router.push(`/?notebook_id=${encodeURIComponent(notebookId)}`);
+      await router.push(`/?notebook_id=${encodeURIComponent(data.notebook_id)}`);
     } catch (err) {
       console.error("Failed to create notebook:", err);
     } finally {
@@ -151,31 +223,31 @@ export default function Home() {
   };
 
   const openNotebookSession = (session: SessionDetail) => {
-    const notebookParam = session.notebookId ? `&notebook_id=${encodeURIComponent(session.notebookId)}` : "";
-    router.push(`/?session_id=${encodeURIComponent(session.sessionId)}${notebookParam}`);
+    const params = new URLSearchParams();
+    params.set("session_id", session.sessionId);
+    if (session.notebookId) params.set("notebook_id", session.notebookId);
+    router.push(`/?${params.toString()}`);
   };
 
   const deleteSession = async (sessionId: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    if (!confirm("Bạn có chắc chắn muốn xóa phiên này?")) return;
+    e?.stopPropagation();
+    if (!confirm("Are you sure you want to delete this session?")) return;
     try {
       await axios.delete(`${API}/sessions/${sessionId}`);
       setSessions((prev) => prev.filter((s) => s.sessionId !== sessionId));
       setActiveMenuSessionId(null);
-    } catch (err) {
-      console.error("Failed to delete session:", err);
-      alert("Không thể xóa phiên.");
+    } catch {
+      alert("Unable to delete session.");
     }
   };
 
   const renameNotebook = async (session: SessionDetail, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
+    e?.stopPropagation();
     if (!session.notebookId) {
-      alert("Phiên này không gắn với notebook cụ thể.");
+      alert("This session is not attached to a specific notebook.");
       return;
     }
-    const nextTitle = prompt("Nhập tên notebook mới:", session.notebookTitle);
-    const title = nextTitle?.trim();
+    const title = prompt("Enter new notebook name:", session.notebookTitle)?.trim();
     if (!title) return;
     try {
       await axios.patch(`${API}/notebooks/${session.notebookId}`, { title });
@@ -185,80 +257,18 @@ export default function Home() {
         )
       );
       setActiveMenuSessionId(null);
-    } catch (err) {
-      console.error("Failed to rename notebook:", err);
-      alert("Không thể đổi tên notebook.");
-    }
-  };
-
-  const timeAgo = (isoString: string) => {
-    const then = new Date(isoString).getTime();
-    const now = Date.now();
-    const diffMinutes = Math.max(1, Math.floor((now - then) / 60000));
-    if (diffMinutes < 60) return `${diffMinutes} phút trước`;
-    const diffHours = Math.floor(diffMinutes / 60);
-    if (diffHours < 24) return `${diffHours} giờ trước`;
-    const diffDays = Math.floor(diffHours / 24);
-    if (diffDays < 7) return `${diffDays} ngày trước`;
-    return formatDateTime(isoString);
-  };
-
-  const pastelThemes = [
-    "bg-pink-50 text-pink-700",
-    "bg-emerald-50 text-emerald-700",
-    "bg-purple-50 text-purple-700",
-    "bg-sky-50 text-sky-700",
-    "bg-orange-50 text-orange-700",
-    "bg-indigo-50 text-indigo-700",
-  ];
-
-  const getPastelTheme = (seed: string) => {
-    let hash = 0;
-    for (let i = 0; i < seed.length; i++) {
-      hash = (hash << 5) - hash + seed.charCodeAt(i);
-      hash |= 0;
-    }
-    const idx = Math.abs(hash) % pastelThemes.length;
-    return pastelThemes[idx];
-  };
-
-  const formatDateTime = (isoString: string) => {
-    try {
-      const date = new Date(isoString);
-      return date.toLocaleString("vi-VN", {
-        hour: "2-digit",
-        minute: "2-digit",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      });
     } catch {
-      return "";
-    }
-  };
-
-  const getModeBadge = (mode: Mode) => {
-    switch (mode) {
-      case "research":
-        return { label: "Research", className: "bg-indigo-50 text-indigo-700 border-indigo-200", icon: Sparkles };
-      case "quiz":
-        return { label: "Quiz", className: "bg-emerald-50 text-emerald-700 border-emerald-200", icon: Layers };
-      case "roadmap":
-        return { label: "Roadmap", className: "bg-amber-50 text-amber-700 border-amber-200", icon: Compass };
-      case "chat":
-      default:
-        return { label: "Chat", className: "bg-sky-50 text-sky-700 border-sky-200", icon: MessageSquare };
+      alert("Unable to rename notebook.");
     }
   };
 
   const filteredSessions = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
-    return sessions.filter((session) => {
-      const searchMatch =
-        query.length === 0 ||
-        session.notebookTitle.toLowerCase().includes(query);
-      return searchMatch;
-    });
+    if (!query) return sessions;
+    return sessions.filter((session) =>
+      session.notebookTitle.toLowerCase().includes(query) ||
+      getModeBadge(session.mode).label.toLowerCase().includes(query)
+    );
   }, [sessions, searchQuery]);
 
   if (hasWorkspaceParams) {
@@ -275,198 +285,254 @@ export default function Home() {
     );
   }
 
+  const renderSessionCard = (session: SessionDetail) => {
+    const modeInfo = getModeBadge(session.mode);
+    const ModeIcon = modeInfo.icon;
+    const pastel = getPastelTheme(`${session.notebookTitle}-${session.sessionId}`);
+    const isMenuOpen = activeMenuSessionId === session.sessionId;
+
+    return (
+      <div
+        key={session.sessionId}
+        onClick={() => openNotebookSession(session)}
+        className="group cursor-pointer bg-white border border-slate-200 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-indigo-200 relative overflow-hidden"
+      >
+        <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 -mr-8 -mt-8" />
+        
+        <div className="relative">
+          <div className="flex items-start justify-between gap-3 mb-4">
+            <div className={`p-2.5 rounded-xl ${pastel}`}>
+              <ModeIcon className="w-5 h-5" />
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-slate-100 text-slate-600 flex items-center gap-1.5">
+                <Clock className="w-3 h-3" />
+                {timeAgo(session.lastUpdated)}
+              </span>
+              <div className="relative">
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActiveMenuSessionId(isMenuOpen ? null : session.sessionId);
+                  }}
+                  className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+                >
+                  <MoreHorizontal className="w-4 h-4" />
+                </button>
+                {isMenuOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 z-10">
+                    <button
+                      onClick={(e) => renameNotebook(session, e)}
+                      className="w-full px-3 py-2.5 rounded-lg text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
+                    >
+                      <PencilLine className="w-3.5 h-3.5 text-slate-500" />
+                      Edit Notebook Title
+                    </button>
+                    <button
+                      onClick={(e) => deleteSession(session.sessionId, e)}
+                      className="w-full px-3 py-2.5 rounded-lg text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2.5"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      Delete Session
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <h3 className="text-base font-bold text-slate-900 truncate leading-tight">
+            {session.notebookTitle}
+          </h3>
+          
+          <div className="mt-2 flex items-center gap-1.5">
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${modeInfo.className}`}>
+              {modeInfo.label}
+            </span>
+            <span className="text-[10px] text-slate-400">•</span>
+            <span className="text-[10px] text-slate-500">{modeInfo.description}</span>
+          </div>
+
+          <div className="mt-4 pt-4 border-t border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <span className="text-xs text-slate-600 flex items-center gap-1.5">
+                <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
+                {session.messageCount} messages
+              </span>
+              <span className="text-xs text-slate-600 flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5 text-slate-400" />
+                {session.sourceCount} sources
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderSessionList = (session: SessionDetail) => {
+    const modeInfo = getModeBadge(session.mode);
+    const ModeIcon = modeInfo.icon;
+    const pastel = getPastelTheme(`${session.notebookTitle}-${session.sessionId}`);
+    const isMenuOpen = activeMenuSessionId === session.sessionId;
+
+    return (
+      <div
+        key={session.sessionId}
+        onClick={() => openNotebookSession(session)}
+        className="group cursor-pointer w-full px-4 py-3.5 hover:bg-slate-50 transition-colors border-b border-slate-100 last:border-b-0"
+      >
+        <div className="flex items-center gap-4">
+          <div className={`p-2 rounded-lg ${pastel}`}>
+            <ModeIcon className="w-4 h-4" />
+          </div>
+          
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-slate-900 truncate">{session.notebookTitle}</p>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {session.sourceCount} sources • {formatDateTime(session.createdAt)}
+            </p>
+          </div>
+          
+          <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${modeInfo.className} flex items-center gap-1.5`}>
+            <ModeIcon className="w-3 h-3" />
+            {modeInfo.label}
+          </span>
+          
+          <span className="text-xs text-slate-600 font-medium">
+            {session.messageCount}
+          </span>
+          
+          <span className="text-xs text-slate-500 whitespace-nowrap">
+            {timeAgo(session.lastUpdated)}
+          </span>
+          
+          <div className="relative">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuSessionId(isMenuOpen ? null : session.sessionId);
+              }}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
+            >
+              <MoreHorizontal className="w-4 h-4" />
+            </button>
+            {isMenuOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white border border-slate-200 rounded-xl shadow-lg p-1.5 z-10">
+                <button
+                  onClick={(e) => renameNotebook(session, e)}
+                  className="w-full px-3 py-2.5 rounded-lg text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2.5"
+                >
+                  <PencilLine className="w-3.5 h-3.5 text-slate-500" />
+                  Edit Notebook Title
+                </button>
+                <button
+                  onClick={(e) => deleteSession(session.sessionId, e)}
+                  className="w-full px-3 py-2.5 rounded-lg text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Delete Session
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-[#F8F9FA] text-slate-800">
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 text-slate-800">
       <Head>
-        <title>NoteMind Dashboard</title>
+        <title>NoteMind</title>
         <meta name="description" content="Central dashboard for session history" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
 
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-[#F8F9FA]/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap gap-3 items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">N</div>
-            <div>
-              <p className="text-sm font-semibold text-slate-900">NoteMind</p>
+          {/* Logo với gradient text giống NotebookWorkspace */}
+          <div 
+            onClick={() => router.push("/")}
+            className="flex items-center gap-3 cursor-pointer group transition-all hover:scale-105"
+          >
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-600 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-indigo-200 group-hover:shadow-indigo-300 transition-all">
+              <Zap className="w-5 h-5" />
             </div>
+            <span className="text-lg font-bold tracking-tight bg-gradient-to-r from-indigo-600 via-purple-600 to-indigo-600 bg-clip-text text-transparent bg-[length:200%_auto] animate-gradient">
+              NoteMind
+            </span>
           </div>
 
           <button
             onClick={() => setShowCreateModal(true)}
-            className="h-10 px-4 rounded-xl bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 transition-colors shadow-sm inline-flex items-center gap-2"
+            className="h-10 px-5 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold hover:shadow-lg hover:shadow-indigo-200 transition-all duration-300 inline-flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Tạo Notebook Mới
+            New Notebook
           </button>
         </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-6">
-        {/* Simplified top bar: only search and view toggle */}
-        <section className="mb-6 flex flex-wrap gap-3 items-center justify-between">
-          <div className="flex-1 min-w-[240px] max-w-md relative">
+      <main className="max-w-7xl mx-auto px-6 py-8">
+        <section className="mb-8 flex flex-wrap gap-4 items-center justify-between">
+          <div className="flex-1 min-w-[280px] max-w-md relative">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Tìm kiếm theo tên notebook..."
-              className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
+              placeholder="Search by notebook name or mode..."
+              className="w-full h-11 pl-10 pr-4 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
             />
           </div>
 
-          <div className="flex items-center gap-1 p-1 rounded-lg border border-slate-200 bg-white">
-            <button
-              onClick={() => setViewType("grid")}
-              className={`p-1.5 rounded ${viewType === "grid" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100"}`}
-              title="Grid view"
-            >
-              <Grid3X3 className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setViewType("list")}
-              className={`p-1.5 rounded ${viewType === "list" ? "bg-indigo-50 text-indigo-700" : "text-slate-500 hover:bg-slate-100"}`}
-              title="List view"
-            >
-              <List className="w-4 h-4" />
-            </button>
+          <div className="flex items-center p-1 rounded-lg border border-slate-200 bg-white shadow-sm">
+            {(["grid", "list"] as ViewType[]).map((type) => (
+              <button
+                key={type}
+                onClick={() => setViewType(type)}
+                className={`p-2 rounded-md transition-all ${
+                  viewType === type 
+                    ? "bg-indigo-100 text-indigo-700 shadow-sm" 
+                    : "text-slate-500 hover:bg-slate-100"
+                }`}
+                title={`${type} view`}
+              >
+                {type === "grid" ? <Grid3X3 className="w-4 h-4" /> : <List className="w-4 h-4" />}
+              </button>
+            ))}
           </div>
         </section>
 
         <section>
           {loading ? (
-            <div className="py-16 flex flex-col items-center gap-3">
-              <div className="w-7 h-7 border-2 border-slate-300 border-t-indigo-600 rounded-full animate-spin" />
-              <p className="text-sm text-slate-500">Đang tải dữ liệu dashboard...</p>
+            <div className="py-20 flex flex-col items-center gap-4">
+              <div className="w-10 h-10 border-3 border-slate-200 border-t-indigo-600 rounded-full animate-spin" />
+              <p className="text-sm text-slate-500 font-medium">Loading sessions...</p>
             </div>
           ) : filteredSessions.length === 0 ? (
-            <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
-              <p className="text-sm text-slate-600">Không có phiên nào phù hợp với tìm kiếm hiện tại.</p>
+            <div className="bg-white border border-slate-200 rounded-2xl p-12 text-center shadow-sm">
+              <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-4">
+                <FolderOpen className="w-8 h-8 text-slate-400" />
+              </div>
+              <p className="text-sm font-medium text-slate-700">No sessions found</p>
+              <p className="text-xs text-slate-500 mt-1">Try adjusting your search or create a new notebook</p>
             </div>
           ) : viewType === "grid" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {filteredSessions.map((session) => {
-                const modeInfo = getModeBadge(session.mode);
-                const ModeIcon = modeInfo.icon;
-                const pastel = getPastelTheme(`${session.notebookTitle}-${session.sessionId}`);
-                return (
-                  <div
-                    key={session.sessionId}
-                    onClick={() => openNotebookSession(session)}
-                    className="cursor-pointer text-left bg-white border border-slate-100 rounded-2xl p-4 transition-all duration-300 hover:-translate-y-1 hover:shadow-md"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <span className={`text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${modeInfo.className}`}>
-                        <ModeIcon className="w-2.5 h-2.5" />
-                        {modeInfo.label}
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className={`text-[11px] inline-flex items-center gap-1 px-2 py-1 rounded-full ${pastel}`}>
-                          <Clock className="w-3 h-3" />
-                          {timeAgo(session.lastUpdated)}
-                        </span>
-                        <div className="relative">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveMenuSessionId((prev) => (prev === session.sessionId ? null : session.sessionId));
-                            }}
-                            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-                          >
-                            <MoreHorizontal className="w-4 h-4" />
-                          </button>
-                          {activeMenuSessionId === session.sessionId && (
-                            <div className="absolute right-0 mt-1 w-44 bg-white border border-slate-200 rounded-xl shadow-sm p-1 z-10">
-                              <button
-                                onClick={(e) => renameNotebook(session, e)}
-                                className="w-full px-2.5 py-2 rounded-lg text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                              >
-                                <PencilLine className="w-3.5 h-3.5 text-slate-500" />
-                                Chỉnh sửa tiêu đề
-                              </button>
-                              <button
-                                onClick={(e) => deleteSession(session.sessionId, e)}
-                                className="w-full px-2.5 py-2 rounded-lg text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" />
-                                Xóa phiên
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                    <h3 className="text-sm font-bold text-slate-800 truncate">{session.notebookTitle}</h3>
-                    <div className="mt-2 text-xs text-slate-600 flex items-center gap-3">
-                      <span className="inline-flex items-center gap-1">
-                        <MessageSquare className="w-3.5 h-3.5 text-slate-400" />
-                        {session.messageCount} tin nhắn
-                      </span>
-                      <span className="text-slate-400">{session.sourceCount} tài liệu</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredSessions.map(renderSessionCard)}
             </div>
           ) : (
-            <div className="bg-white border border-slate-200 rounded-xl divide-y divide-slate-200">
-              {filteredSessions.map((session) => {
-                const modeInfo = getModeBadge(session.mode);
-                const ModeIcon = modeInfo.icon;
-                const pastel = getPastelTheme(`${session.notebookTitle}-${session.sessionId}`);
-                return (
-                  <div
-                    key={session.sessionId}
-                    onClick={() => openNotebookSession(session)}
-                    className="cursor-pointer w-full px-4 py-3 text-left hover:bg-slate-50 transition-colors relative"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold text-slate-800 truncate">{session.notebookTitle}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">Cập nhật: {timeAgo(session.lastUpdated)}</p>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full ${pastel}`}>
-                          {session.sourceCount} tài liệu
-                        </span>
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full border inline-flex items-center gap-1 ${modeInfo.className}`}>
-                          <ModeIcon className="w-2.5 h-2.5" />
-                          {modeInfo.label}
-                        </span>
-                        <span className="text-xs text-slate-600">{session.messageCount} tin nhắn</span>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setActiveMenuSessionId((prev) => (prev === session.sessionId ? null : session.sessionId));
-                          }}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-slate-700 hover:bg-slate-100"
-                        >
-                          <MoreHorizontal className="w-4 h-4" />
-                        </button>
-                        {activeMenuSessionId === session.sessionId && (
-                          <div className="absolute right-4 top-11 w-44 bg-white border border-slate-200 rounded-xl shadow-sm p-1 z-10">
-                            <button
-                              onClick={(e) => renameNotebook(session, e)}
-                              className="w-full px-2.5 py-2 rounded-lg text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                            >
-                              <PencilLine className="w-3.5 h-3.5 text-slate-500" />
-                              Chỉnh sửa tiêu đề
-                            </button>
-                            <button
-                              onClick={(e) => deleteSession(session.sessionId, e)}
-                              className="w-full px-2.5 py-2 rounded-lg text-left text-xs text-red-600 hover:bg-red-50 flex items-center gap-2"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              Xóa phiên
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 flex items-center gap-3">
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Notebook</span>
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider ml-auto">Mode</span>
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Messages</span>
+                <span className="text-xs font-medium text-slate-500 uppercase tracking-wider">Updated</span>
+                <span className="w-8" />
+              </div>
+              {filteredSessions.map(renderSessionList)}
             </div>
           )}
         </section>
@@ -474,42 +540,73 @@ export default function Home() {
 
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/30" onClick={() => setShowCreateModal(false)} />
-          <div className="relative w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-sm p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-sm font-semibold text-slate-900">Tạo Notebook Mới</h3>
+          <div className="absolute inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={() => setShowCreateModal(false)} />
+          <div className="relative w-full max-w-md rounded-2xl bg-white border border-slate-200 shadow-2xl p-6 animate-in fade-in zoom-in duration-200">
+            <div className="flex items-center justify-between mb-5">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900">Create New Notebook</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Start a new AI-powered workspace</p>
+              </div>
               <button
                 onClick={() => setShowCreateModal(false)}
-                className="p-1.5 rounded-md text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
-            <input
-              value={newNotebookTitle}
-              onChange={(e) => setNewNotebookTitle(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && !creatingNotebook && createNotebook()}
-              placeholder="Nhập tên notebook..."
-              className="w-full h-10 px-3 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300"
-            />
-            <div className="mt-4 flex justify-end gap-2">
-              <button
-                onClick={() => setShowCreateModal(false)}
-                className="px-3.5 h-9 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-100"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={createNotebook}
-                disabled={creatingNotebook}
-                className="px-3.5 h-9 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
-              >
-                {creatingNotebook ? "Đang tạo..." : "Tạo và mở Workspace"}
-              </button>
+            
+            <div className="space-y-3">
+              <input
+                value={newNotebookTitle}
+                onChange={(e) => setNewNotebookTitle(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && !creatingNotebook && createNotebook()}
+                placeholder="Enter notebook name..."
+                className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
+                autoFocus
+              />
+              
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="px-4 h-10 rounded-lg border border-slate-200 text-sm text-slate-600 hover:bg-slate-50 transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={createNotebook}
+                  disabled={creatingNotebook}
+                  className="px-5 h-10 rounded-lg bg-gradient-to-r from-indigo-600 to-purple-600 text-white text-sm font-semibold hover:shadow-lg hover:shadow-indigo-200 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {creatingNotebook ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" />
+                      Create & Open
+                    </>
+                  )}
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
+
+      {/* CSS cho gradient animation giống NotebookWorkspace */}
+      <style jsx>{`
+        @keyframes gradient {
+          0% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+          100% { background-position: 0% 50%; }
+        }
+        .animate-gradient {
+          animation: gradient 3s ease infinite;
+          background-size: 200% auto;
+        }
+      `}</style>
     </div>
   );
 }

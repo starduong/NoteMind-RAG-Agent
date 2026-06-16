@@ -250,7 +250,7 @@ export default function ChatView({
 
   return (
     <div className="flex-1 overflow-y-auto px-4 py-6">
-      <div className="max-w-2xl mx-auto space-y-6">
+      <div className="max-w-4xl mx-auto space-y-6">
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {/* Avatar */}
@@ -267,7 +267,7 @@ export default function ChatView({
               <div className={`text-[10px] font-semibold uppercase tracking-wider ${
                 msg.role === "user" ? "text-slate-500 text-right" : "text-indigo-600"
               }`}>
-                {msg.role === "user" ? "Bạn" : "NoteMind AI"}
+                {msg.role === "user" ? "Me" : ""}
                 {msg.role === "assistant" && msg.mode && (
                   <span className="ml-1.5 px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-500 text-[8px] font-bold">
                     {msg.mode}
