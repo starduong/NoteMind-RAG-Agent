@@ -15,14 +15,17 @@ from models.schemas import (
     NotebookUpdateRequest,
     NotebookAskRequest,
     AddSourceRequest,
+    LearnerProfileInput,
 )
+from fastapi.responses import Response
+from utils.ics_generator import generate_ics
 from db.notebook_store import notebook_store
 import faiss
 import numpy as np
 import tempfile
 from fastapi.middleware.cors import CORSMiddleware
 from agents.chat.memory import build_memory_payload
-from agents.supervisor.orchestrator import Orchestrator, notebook_orchestrator
+from agents.supervisor.orchestrator import notebook_orchestrator
 from utils.logger import api_logger
 
 app = FastAPI()
@@ -35,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-orchestrator = Orchestrator()
+
 
 @app.get("/health")
 def health():
@@ -328,135 +331,7 @@ async def ask(req: AskRequest):
         "sources": sources[:req.top_k]
     }
 
-@app.post("/ask-v2")
-async def ask_multi_doc(req: AskRequest):
-    """
-    Phase 5: Multi-document query with context switching
-    Query selected documents using multi-agent workflow
-    """
-    api_logger.info(f"[Phase 5] Multi-doc query: '{req.query}' (doc_ids={req.doc_ids}, session_id={req.session_id})")
 
-    try:
-        # Create or get session
-        session_id = req.session_id
-        if not session_id:
-            session_id = conversation_memory.create_session()
-        elif not conversation_memory.session_exists(session_id):
-            conversation_memory.create_session(session_id)
-
-        api_logger.debug(f"Session: {session_id}")
-
-        # Add user message to history
-        conversation_memory.add_message(session_id, "user", req.query)
-
-        # Get conversation context
-        context_history = conversation_memory.get_context(session_id, max_messages=10)
-
-        # Process query with multi-doc agents
-        api_logger.info("Starting multi-doc agent workflow")
-        result = orchestrator.process_query_multi_doc(
-            query=req.query,
-            doc_ids=req.doc_ids,
-            top_k=req.top_k,
-            conversation_context=context_history
-        )
-
-        if result["status"] == "error":
-            api_logger.error(f"Multi-doc workflow error: {result['answer']}")
-            raise HTTPException(status_code=400, detail=result["answer"])
-
-        api_logger.info("Multi-doc workflow completed successfully")
-
-        # Add assistant response to history
-        conversation_memory.add_message(
-            session_id,
-            "assistant",
-            result["answer"],
-            metadata={
-                "sources": result.get("sources", []),
-                "workflow_log": result.get("workflow_log", []),
-                "searched_docs": result.get("searched_docs", [])
-            }
-        )
-
-        return {
-            "answer": result["answer"],
-            "sources": result.get("sources", []),
-            "workflow_log": result.get("workflow_log", []),
-            "metadata": result.get("metadata", {}),
-            "searched_docs": result.get("searched_docs", []),
-            "session_id": session_id
-        }
-
-    except Exception as e:
-        api_logger.error(f"Error in multi-doc workflow: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error in multi-doc workflow: {str(e)}")
-
-
-@app.post("/ask-agents")
-async def ask_with_agents(req: AskRequest):
-    """
-    Answer query using multi-agent workflow with conversation memory:
-    Research Agent → Summarizer Agent → Critic Agent → Editor Agent
-    """
-    api_logger.info(f"Multi-agent query received: '{req.query}' (session_id={req.session_id})")
-
-    try:
-        # Create or get session
-        session_id = req.session_id
-        if not session_id:
-            session_id = conversation_memory.create_session()
-        elif not conversation_memory.session_exists(session_id):
-            conversation_memory.create_session(session_id)
-
-        api_logger.debug(f"Session: {session_id}")
-
-        # Add user message to history
-        conversation_memory.add_message(session_id, "user", req.query)
-        api_logger.debug(f"Added user message to session {session_id}")
-
-        # Get conversation context
-        context_history = conversation_memory.get_context(session_id, max_messages=10)
-        api_logger.debug(f"Retrieved conversation context (length: {len(context_history)} chars)")
-
-        # Process query with agents
-        api_logger.info("Starting multi-agent workflow")
-        result = orchestrator.process_query(
-            query=req.query,
-            top_k=req.top_k,
-            source=req.source,
-            conversation_context=context_history
-        )
-
-        if result["status"] == "error":
-            api_logger.error(f"Multi-agent workflow returned error: {result['answer']}")
-            raise HTTPException(status_code=400, detail=result["answer"])
-
-        api_logger.info("Multi-agent workflow completed successfully")
-
-        # Add assistant response to history
-        conversation_memory.add_message(
-            session_id,
-            "assistant",
-            result["answer"],
-            metadata={
-                "sources": result.get("sources", []),
-                "workflow_log": result.get("workflow_log", [])
-            }
-        )
-        api_logger.debug(f"Added assistant response to session {session_id}")
-
-        return {
-            "answer": result["answer"],
-            "sources": result.get("sources", []),
-            "workflow_log": result.get("workflow_log", []),
-            "metadata": result.get("metadata", {}),
-            "session_id": session_id
-        }
-
-    except Exception as e:
-        api_logger.error(f"Error in multi-agent workflow: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error in multi-agent workflow: {str(e)}")
 
 
 # Session Management Endpoints
@@ -515,17 +390,7 @@ def list_sessions():
     return {"sessions": sessions, "count": len(sessions)}
 
 
-@app.get("/workflow/diagram")
-def get_workflow_diagram():
-    """Get LangGraph workflow visualization as Mermaid diagram"""
-    api_logger.info("Generating workflow diagram")
-    diagram = orchestrator.get_workflow_diagram()
-    api_logger.debug(f"Diagram generated (length: {len(diagram)} chars)")
-    return {
-        "diagram": diagram,
-        "format": "mermaid",
-        "description": "Multi-agent workflow with conditional routing"
-    }
+
 
 
 # --- Notebook endpoints (NotebookLM-style) ---
@@ -628,6 +493,11 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
     history = conversation_memory.get_history(session_id, limit=16)
     memory_payload = build_memory_payload(history)
 
+    # Build learner_profile dict if provided
+    learner_profile_dict = None
+    if req.learner_profile:
+        learner_profile_dict = req.learner_profile.model_dump()
+
     result = notebook_orchestrator.process(
         notebook_id=notebook_id,
         user_query=req.query,
@@ -638,6 +508,7 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
         conversation_summary=memory_payload["conversation_summary"],
         recent_messages=memory_payload["recent_messages"],
         doc_ids=req.doc_ids,
+        learner_profile=learner_profile_dict,
     )
 
     if result["status"] == "error":
@@ -653,6 +524,7 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
             "citations": result.get("citations", []),
             "workflow_log": result.get("workflow_log", []),
             "notebook_id": notebook_id,
+            "result": result.get("result", {}),  # Includes schedule data for ICS export
         },
     )
 
@@ -660,6 +532,47 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
         **result,
         "session_id": session_id,
     }
+
+
+@app.get("/notebooks/{notebook_id}/roadmap/export-ics")
+def export_roadmap_ics(notebook_id: str, session_id: str = None):
+    """
+    Export the last roadmap schedule as an iCalendar (.ics) file.
+    Pass session_id query param to get session-specific roadmap.
+    """
+    api_logger.info(f"ICS export request: notebook={notebook_id}, session={session_id}")
+
+    # Try to get schedule from session history
+    if session_id and conversation_memory.session_exists(session_id):
+        messages = conversation_memory.get_history(session_id)
+        for msg in reversed(messages):
+            meta = msg.get("metadata", {})
+            if meta.get("mode") == "roadmap":
+                # Check if result has schedule data in workflow_log or metadata
+                result_data = meta.get("result", {})
+                if isinstance(result_data, dict) and result_data.get("schedule"):
+                    schedule_data = result_data["schedule"]
+                    if isinstance(schedule_data, list):
+                        schedule_data = {"schedule": schedule_data}
+                    learner_profile = result_data.get("learner_profile", {})
+                    goal = learner_profile.get("goal", "Learning Roadmap") if learner_profile else "Learning Roadmap"
+                    ics_content = generate_ics(schedule_data, calendar_name=f"NoteMind — {goal}")
+                    api_logger.info(f"ICS generated from session {session_id}: {len(ics_content)} bytes")
+                    return Response(
+                        content=ics_content,
+                        media_type="text/calendar",
+                        headers={
+                            "Content-Disposition": 'attachment; filename="notemind-roadmap.ics"',
+                            "Content-Type": "text/calendar; charset=utf-8",
+                        }
+                    )
+
+    # Fallback: generate a sample ICS
+    api_logger.warning(f"No roadmap data found for notebook={notebook_id}, session={session_id}")
+    raise HTTPException(
+        status_code=404,
+        detail="No roadmap schedule found. Generate a roadmap first in the Roadmap tab."
+    )
 
 
 @app.get("/stats")

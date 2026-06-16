@@ -1,6 +1,6 @@
 """Route notebook actions to the correct capability workflow."""
 
-VALID_MODES = ("chat", "research", "quiz", "roadmap")
+VALID_MODES = ("chat", "quiz", "roadmap")
 
 
 def normalize_mode(mode: str) -> str:

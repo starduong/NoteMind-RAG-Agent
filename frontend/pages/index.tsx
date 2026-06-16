@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Head from "next/head";
 import { useRouter } from "next/router";
 import axios from "axios";
@@ -24,7 +24,7 @@ import NotebookWorkspace from "../components/NotebookWorkspace";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-type Mode = "chat" | "research" | "quiz" | "roadmap";
+type Mode = "chat" | "quiz" | "roadmap";
 type ViewType = "grid" | "list";
 
 interface Notebook {
@@ -46,16 +46,10 @@ interface SessionDetail {
 }
 
 function isMode(value: string): value is Mode {
-  return value === "chat" || value === "research" || value === "quiz" || value === "roadmap";
+  return value === "chat" || value === "quiz" || value === "roadmap";
 }
 
 const MODE_BADGES = {
-  research: {
-    label: "Research",
-    className: "bg-indigo-50 text-indigo-700 border-indigo-200",
-    icon: Sparkles,
-    description: "Deep research & analysis"
-  },
   quiz: {
     label: "Quiz",
     className: "bg-emerald-50 text-emerald-700 border-emerald-200",

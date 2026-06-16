@@ -18,6 +18,7 @@ class QuizReviewerAgent:
                 model=LLM_QUIZ_REVIEW_MODEL,
                 provider=LLM_QUIZ_REVIEW_PROVIDER,
                 temperature=0.2,
+                response_format={"type": "json_object"},
             )
             return {"status": "success", "reviewed": reviewed}
         except Exception as e:

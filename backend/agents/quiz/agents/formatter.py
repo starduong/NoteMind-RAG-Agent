@@ -10,7 +10,7 @@ class QuizFormatterAgent:
     def format(self, reviewed: str, source_count: int) -> dict:
         agent_logger.info(f"{self.name}: formatting quiz")
         formatted = (
-            f"# Quiz\n\n{reviewed.strip()}\n\n---\n"
+            f"```json\n{reviewed.strip()}\n```\n\n"
             f"*Generated from {source_count} source(s) in this notebook.*"
         )
         return {"status": "success", "formatted": formatted}

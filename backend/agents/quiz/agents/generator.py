@@ -21,6 +21,7 @@ class QuizGeneratorAgent:
                 model=LLM_QUIZ_GEN_MODEL,
                 provider=LLM_QUIZ_GEN_PROVIDER,
                 temperature=0.4,
+                response_format={"type": "json_object"},
             )
             return {"status": "success", "draft": draft}
         except Exception as e:

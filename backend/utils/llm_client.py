@@ -94,6 +94,7 @@ def chat_complete(
     model: Optional[str] = None,
     temperature: float = 0.3,
     provider: Optional[str] = None,
+    response_format: Optional[dict] = None,
 ) -> tuple[str, Optional[object]]:
     """
     Chat completion via OpenAI-compatible providers. Returns (content, usage_or_none).
@@ -102,11 +103,15 @@ def chat_complete(
     provider = (provider or LLM_MODEL_PROVIDER).lower()
     client = get_llm_client(provider)
 
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        temperature=temperature,
-    )
+    kwargs = {
+        "model": model,
+        "messages": messages,
+        "temperature": temperature,
+    }
+    if response_format:
+        kwargs["response_format"] = response_format
+
+    response = client.chat.completions.create(**kwargs)
 
     content = response.choices[0].message.content or ""
     usage = getattr(response, "usage", None)
@@ -118,6 +123,7 @@ def generate_text(
     model: Optional[str] = None,
     temperature: float = 0.3,
     provider: Optional[str] = None,
+    response_format: Optional[dict] = None,
 ) -> str:
     """Single-turn prompt helper (replaces legacy call_openai)."""
     content, _ = chat_complete(
@@ -125,5 +131,6 @@ def generate_text(
         model=model,
         temperature=temperature,
         provider=provider,
+        response_format=response_format,
     )
     return content

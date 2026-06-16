@@ -2,18 +2,15 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import { useRouter } from "next/router";
 import {
-  Trash2, Send, Sparkles, Layers, Compass, MessageSquare, Upload, X,
-  CheckCircle, RefreshCw, FileText,
-  Database, Bot, Zap, FolderOpen
+  Trash2, Send, Sparkles, Layers, Compass, MessageSquare, Upload, X, RefreshCw, FileText, Database, Zap, FolderOpen
 } from "lucide-react";
 import ChatView from "./views/ChatView";
-import ResearchView from "./views/ResearchView";
 import QuizView from "./views/QuizView";
 import RoadmapView from "./views/RoadmapView";
 
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
-type Mode = "chat" | "research" | "quiz" | "roadmap";
+type Mode = "chat" | "quiz" | "roadmap";
 
 interface Message {
   role: "user" | "assistant";
@@ -21,6 +18,8 @@ interface Message {
   mode?: Mode;
   sources?: string[];
   citations?: CitationRef[];
+  result?: Record<string, any>;
+  ics_content?: string;
 }
 
 interface CitationRef {
@@ -50,7 +49,6 @@ interface Notebook {
 
 const MODES = [
   { id: "chat", label: "Chat", icon: MessageSquare },
-  { id: "research", label: "Research", icon: Sparkles },
   { id: "quiz", label: "Quiz", icon: Layers },
   { id: "roadmap", label: "Roadmap", icon: Compass },
 ] as const;
@@ -60,11 +58,6 @@ const QUICK_PROMPTS: Record<Mode, { text: string; label: string }[]> = {
     { text: "Tóm tắt ngắn gọn các luận điểm chính trong tài liệu.", label: "Tóm tắt chính" },
     { text: "Có những nội dung nào đề cập đến ngân sách hay kế hoạch tài chính?", label: "Phân tích tài chính" },
     { text: "Rút ra 5 điều cốt lõi tôi cần nhớ từ nguồn này.", label: "5 bài học cốt lõi" }
-  ],
-  research: [
-    { text: "Viết báo cáo phân tích sâu sắc về nội dung các tài liệu đã tải lên.", label: "Báo cáo chuyên sâu" },
-    { text: "So sánh các phương pháp/quan điểm được trình bày giữa các tài liệu.", label: "So sánh đối chiếu" },
-    { text: "Phân tích điểm mạnh, điểm yếu và các lỗ hổng thông tin trong tài liệu.", label: "Phân tích lỗ hổng" }
   ],
   quiz: [
     { text: "Tạo 5 câu hỏi trắc nghiệm kèm đáp án để kiểm tra kiến thức.", label: "Tạo Quiz trắc nghiệm" },
@@ -80,14 +73,12 @@ const QUICK_PROMPTS: Record<Mode, { text: string; label: string }[]> = {
 
 const MODE_PLACEHOLDER: Record<Mode, string> = {
   chat: "Ask questions about your documents...",
-  research: "Describe your research topic for in-depth analysis...",
   quiz: "E.g., Generate 5 questions about chapter 2...",
   roadmap: "E.g., Create a 6-week Python learning path...",
 };
 
 const getModeStyles = (mode: Mode) => ({
   chat: { bg: "bg-sky-50", border: "border-sky-200", text: "text-sky-700", icon: "text-sky-600" },
-  research: { bg: "bg-indigo-50", border: "border-indigo-200", text: "text-indigo-700", icon: "text-indigo-600" },
   quiz: { bg: "bg-emerald-50", border: "border-emerald-200", text: "text-emerald-700", icon: "text-emerald-600" },
   roadmap: { bg: "bg-amber-50", border: "border-amber-200", text: "text-amber-700", icon: "text-amber-600" },
 }[mode]);
@@ -153,6 +144,7 @@ export default function NotebookWorkspace() {
               mode: m.metadata?.mode || "chat",
               sources: m.metadata?.sources || [],
               citations: m.metadata?.citations || [],
+              result: m.metadata?.result || undefined,
             }));
             setMessages(mapped);
             const lastAssistant = [...data.messages].reverse().find(m => m.role === "assistant");
@@ -199,7 +191,7 @@ export default function NotebookWorkspace() {
     }
   };
 
-  const sendMessage = async (overrideInput?: string) => {
+  const sendMessage = async (overrideInput?: string, learnerProfile?: Record<string, any>) => {
     const query = (overrideInput || input).trim();
     if (!query || isProcessing || !activeNotebook) return;
 
@@ -209,12 +201,19 @@ export default function NotebookWorkspace() {
     setActiveCitation(null);
 
     try {
-      const { data } = await axios.post(`${API}/notebooks/${activeNotebook.notebook_id}/ask`, {
+      const requestBody: Record<string, any> = {
         query,
         mode,
         top_k: 5,
         session_id: sessionId || undefined,
-      });
+      };
+
+      // Attach learner_profile for roadmap mode
+      if (mode === "roadmap" && learnerProfile) {
+        requestBody.learner_profile = learnerProfile;
+      }
+
+      const { data } = await axios.post(`${API}/notebooks/${activeNotebook.notebook_id}/ask`, requestBody);
 
       if (data.session_id && !sessionId) setSessionId(data.session_id);
 
@@ -224,6 +223,8 @@ export default function NotebookWorkspace() {
         mode,
         sources: data.sources,
         citations: data.citations || [],
+        result: data.result || undefined,
+        ics_content: data.ics_content || undefined,
       }]);
     } catch (err) {
       const detail = axios.isAxiosError(err) && err.response?.data?.detail
@@ -255,19 +256,13 @@ export default function NotebookWorkspace() {
     });
   };
 
-  const handleResearchCitationClick = (e: React.MouseEvent, msgIdx: number, sourceIdx: number, sourceName: string) => {
-    handleChatCitationClick(e, msgIdx, {
-      citation_id: String(sourceIdx + 1),
-      source_name: sourceName,
-    });
-  };
-
   const sources = activeNotebook?.sources_detail || [];
   const style = getModeStyles(mode);
 
   const renderView = () => {
+    const currentModeMessages = messages.filter(m => m.mode === mode);
     const baseProps = {
-      messages,
+      messages: currentModeMessages,
       isProcessing,
       sources,
       quickPrompts: QUICK_PROMPTS[mode],
@@ -278,12 +273,16 @@ export default function NotebookWorkspace() {
     switch (mode) {
       case "chat":
         return <ChatView {...baseProps} onCitationClick={handleChatCitationClick} />;
-      case "research":
-        return <ResearchView {...baseProps} onCitationClick={handleResearchCitationClick} />;
       case "quiz":
         return <QuizView {...baseProps} />;
       case "roadmap":
-        return <RoadmapView {...baseProps} />;
+        return (
+          <RoadmapView
+            {...baseProps}
+            notebookId={activeNotebook?.notebook_id || ""}
+            sessionId={sessionId || undefined}
+          />
+        );
     }
   };
 
@@ -292,7 +291,7 @@ export default function NotebookWorkspace() {
       {/* Sidebar - Now includes header */}
       <aside className="w-[280px] border-r border-slate-200 bg-white/80 backdrop-blur-sm flex flex-col shrink-0 h-full">
         {/* Header inside sidebar - Clickable */}
-        <div 
+        <div
           onClick={goToHome}
           className="h-[60px] border-b border-slate-200/80 flex items-center gap-3 px-4 shrink-0 cursor-pointer group transition-all hover:bg-indigo-50/30"
         >
@@ -329,9 +328,8 @@ export default function NotebookWorkspace() {
             </div>
 
             <label className="block mb-4 cursor-pointer">
-              <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-all ${
-                uploading ? "border-slate-200 bg-slate-50 text-slate-400" : "border-slate-300 hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-500"
-              }`}>
+              <div className={`border-2 border-dashed rounded-xl p-4 text-center transition-all ${uploading ? "border-slate-200 bg-slate-50 text-slate-400" : "border-slate-300 hover:border-indigo-300 hover:bg-indigo-50/50 text-slate-500"
+                }`}>
                 <Upload className={`w-5 h-5 mx-auto mb-2 ${uploading ? "text-slate-400" : "text-indigo-500"}`} />
                 <p className="text-xs font-medium">{uploading ? "Processing..." : "Upload PDF, DOCX, TXT"}</p>
                 <input type="file" accept=".pdf,.docx,.html,.htm,.txt" onChange={handleUpload} disabled={uploading} className="hidden" />
@@ -339,9 +337,8 @@ export default function NotebookWorkspace() {
             </label>
 
             {uploadStatus && (
-              <div className={`mb-4 px-3 py-2 rounded-lg text-xs font-medium text-center ${
-                uploadStatus.startsWith("✓") ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"
-              }`}>
+              <div className={`mb-4 px-3 py-2 rounded-lg text-xs font-medium text-center ${uploadStatus.startsWith("✓") ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-red-50 text-red-700 border border-red-200"
+                }`}>
                 {uploadStatus}
               </div>
             )}
@@ -392,124 +389,104 @@ export default function NotebookWorkspace() {
 
       {/* Main Content - Full height, no header */}
       <main className="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-white to-slate-50/50 h-full">
-        {!activeNotebook ? (
-          <div className="flex-1 flex items-center justify-center p-8">
-            <div className="text-center">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-indigo-200">
-                <Zap className="w-10 h-10 text-white" />
+        {/* Mode Tabs */}
+        <div className="px-4 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm flex justify-between items-center shrink-0">
+          <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
+            {MODES.map(m => {
+              const Icon = m.icon;
+              const isActive = mode === m.id;
+              const s = getModeStyles(m.id);
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => { setMode(m.id); setActiveCitation(null); }}
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${isActive ? `${s.bg} ${s.text} shadow-sm border ${s.border}` : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
+                    }`}
+                >
+                  <Icon className={`w-3.5 h-3.5 ${isActive ? s.icon : "text-slate-400"}`} />
+                  <span>{m.label}</span>
+                  {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Processing */}
+        {isProcessing && (
+          <div className="px-4 py-2 bg-gradient-to-r from-indigo-50/80 to-purple-50/80 border-b border-indigo-100 shrink-0">
+            <div className="flex items-center gap-3">
+              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center animate-pulse">
+                <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin" />
               </div>
-              <h2 className="text-xl font-bold text-slate-800">Welcome to NoteMind</h2>
-              <p className="text-sm text-slate-500 mt-2">Select a notebook or create a new one to start your AI-powered research</p>
+              <div>
+                <p className="text-xs font-semibold text-indigo-700">Processing your request...</p>
+                <p className="text-[10px] text-indigo-500">AI is analyzing your documents</p>
+              </div>
             </div>
           </div>
-        ) : (
-          <>
-            {/* Mode Tabs */}
-            <div className="px-4 py-2 border-b border-slate-200 bg-white/80 backdrop-blur-sm flex justify-between items-center shrink-0">
-              <div className="flex gap-1 bg-slate-100 p-1 rounded-xl border border-slate-200">
-                {MODES.map(m => {
-                  const Icon = m.icon;
-                  const isActive = mode === m.id;
-                  const s = getModeStyles(m.id);
-                  return (
-                    <button
-                      key={m.id}
-                      onClick={() => { setMode(m.id); setActiveCitation(null); }}
-                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                        isActive ? `${s.bg} ${s.text} shadow-sm border ${s.border}` : "text-slate-500 hover:text-slate-700 hover:bg-white/50"
-                      }`}
-                    >
-                      <Icon className={`w-3.5 h-3.5 ${isActive ? s.icon : "text-slate-400"}`} />
-                      <span>{m.label}</span>
-                      {isActive && <span className="w-1.5 h-1.5 rounded-full bg-current" />}
-                    </button>
-                  );
-                })}
-              </div>
-              <button onClick={startNewConversation} className="text-xs text-slate-400 hover:text-slate-600 transition-colors flex items-center gap-1.5">
-                <RefreshCw className="w-3.5 h-3.5" />
-                New Chat
-              </button>
-            </div>
-
-            {/* Processing */}
-            {isProcessing && (
-              <div className="px-4 py-2 bg-gradient-to-r from-indigo-50/80 to-purple-50/80 border-b border-indigo-100 shrink-0">
-                <div className="flex items-center gap-3">
-                  <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center animate-pulse">
-                    <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-semibold text-indigo-700">Processing your request...</p>
-                    <p className="text-[10px] text-indigo-500">AI is analyzing your documents</p>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* View */}
-            <div className="flex-1 overflow-y-auto min-h-0">
-              {renderView()}
-            </div>
-
-            {/* Input */}
-            <div className="p-2 border-t border-slate-200 bg-white/80 backdrop-blur-sm shrink-0">
-              <div className="max-w-4xl mx-auto">
-                <div className="relative rounded-2xl bg-white border-2 border-slate-200 hover:border-indigo-300 focus-within:border-indigo-500 focus-within:shadow-lg focus-within:shadow-indigo-100 transition-all duration-200">
-                  <div className="flex items-end gap-2 px-3 py-1.5">
-                    <textarea
-                      rows={1}
-                      value={input}
-                      onChange={e => {
-                        setInput(e.target.value);
-                        e.target.style.height = 'auto';
-                        e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
-                      }}
-                      onKeyDown={e => {
-                        if (e.key === "Enter" && !e.shiftKey && !isProcessing && input.trim() && sources.length > 0) {
-                          e.preventDefault();
-                          sendMessage();
-                        }
-                      }}
-                      disabled={isProcessing || sources.length === 0}
-                      placeholder={sources.length === 0 ? "📄 Add source documents to start..." : MODE_PLACEHOLDER[mode]}
-                      className="flex-1 bg-transparent text-sm text-slate-700 focus:outline-none resize-none placeholder:text-slate-400 leading-6 py-2 min-h-[40px] max-h-[80px] disabled:opacity-50"
-                      style={{ height: '40px' }}
-                    />
-                    
-                    <button
-                      onClick={() => sendMessage()}
-                      disabled={isProcessing || !input.trim() || sources.length === 0}
-                      className="shrink-0 p-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-indigo-200 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center justify-center min-w-[44px] min-h-[44px]"
-                    >
-                      {isProcessing ? (
-                        <RefreshCw className="w-4 h-4 animate-spin" />
-                      ) : (
-                        <Send className="w-4 h-4" />
-                      )}
-                    </button>
-                  </div>
-                  
-                  <div className="absolute bottom-1 right-16 text-[10px] text-slate-400 pointer-events-none">
-                    {input.length > 0 && (
-                      <span className="bg-white/80 px-1.5 py-0.5 rounded">
-                        {input.length} chars
-                      </span>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="mt-1 flex items-center justify-between px-1">
-                  <span className="text-[10px] text-slate-400">
-                    {sources.length > 0 ? 'Press Enter to send, Shift+Enter for new line' : 'Upload documents to enable chat'}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </>
         )}
-      </main>
 
+        {/* View */}
+        <div className="flex-1 overflow-y-auto min-h-0">
+          {renderView()}
+        </div>
+
+        {/* Input */}
+        <div className="p-2 border-t border-slate-200 bg-white/80 backdrop-blur-sm shrink-0">
+          <div className="max-w-4xl mx-auto">
+            <div className="relative rounded-2xl bg-white border-2 border-slate-200 hover:border-indigo-300 focus-within:border-indigo-500 focus-within:shadow-lg focus-within:shadow-indigo-100 transition-all duration-200">
+              <div className="flex items-end gap-2 px-3 py-1.5">
+                <textarea
+                  rows={1}
+                  value={input}
+                  onChange={e => {
+                    setInput(e.target.value);
+                    e.target.style.height = 'auto';
+                    e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
+                  }}
+                  onKeyDown={e => {
+                    if (e.key === "Enter" && !e.shiftKey && !isProcessing && input.trim() && sources.length > 0) {
+                      e.preventDefault();
+                      sendMessage();
+                    }
+                  }}
+                  disabled={isProcessing || sources.length === 0}
+                  placeholder={sources.length === 0 ? "📄 Add source documents to start..." : MODE_PLACEHOLDER[mode]}
+                  className="flex-1 bg-transparent text-sm text-slate-700 focus:outline-none resize-none placeholder:text-slate-400 leading-6 py-2 min-h-[40px] max-h-[80px] disabled:opacity-50"
+                  style={{ height: '40px' }}
+                />
+
+                <button
+                  onClick={() => sendMessage()}
+                  disabled={isProcessing || !input.trim() || sources.length === 0}
+                  className="shrink-0 p-2.5 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl font-semibold hover:shadow-lg hover:shadow-indigo-200 transition-all duration-200 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center justify-center min-w-[44px] min-h-[44px]"
+                >
+                  {isProcessing ? (
+                    <RefreshCw className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Send className="w-4 h-4" />
+                  )}
+                </button>
+              </div>
+
+              <div className="absolute bottom-1 right-16 text-[10px] text-slate-400 pointer-events-none">
+                {input.length > 0 && (
+                  <span className="bg-white/80 px-1.5 py-0.5 rounded">
+                    {input.length} chars
+                  </span>
+                )}
+              </div>
+            </div>
+
+            <div className="mt-1 flex items-center justify-between px-1">
+              <span className="text-[10px] text-slate-400">
+                {sources.length > 0 ? 'Press Enter to send, Shift+Enter for new line' : 'Upload documents to enable chat'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </main>
       {/* Citation Popover */}
       {activeCitation && (
         <>

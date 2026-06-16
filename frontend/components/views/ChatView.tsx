@@ -96,8 +96,8 @@ function renderMarkdown(text: string): React.ReactNode {
       const cls = level === 1
         ? "text-base font-bold text-slate-900 mt-3 mb-1"
         : level === 2
-        ? "text-sm font-bold text-slate-800 mt-2 mb-1"
-        : "text-xs font-bold text-slate-700 mt-1.5 mb-0.5";
+          ? "text-sm font-bold text-slate-800 mt-2 mb-1"
+          : "text-xs font-bold text-slate-700 mt-1.5 mb-0.5";
       elements.push(<div key={nextKey()} className={cls}>{renderInline(content)}</div>);
       continue;
     }
@@ -254,31 +254,19 @@ export default function ChatView({
         {messages.map((msg, idx) => (
           <div key={idx} className={`flex gap-3 ${msg.role === "user" ? "flex-row-reverse" : "flex-row"}`}>
             {/* Avatar */}
-            <div className={`w-7 h-7 rounded-xl shrink-0 flex items-center justify-center text-[10px] font-bold mt-1 ${
-              msg.role === "user"
+            <div className={`w-7 h-7 rounded-xl shrink-0 flex items-center justify-center text-[10px] font-bold mt-1 ${msg.role === "user"
                 ? "bg-slate-800 text-white"
                 : "bg-indigo-600 text-white"
-            }`}>
+              }`}>
               {msg.role === "user" ? "U" : <Bot className="w-4 h-4" />}
             </div>
 
             {/* Bubble */}
             <div className={`max-w-[82%] ${msg.role === "user" ? "items-end" : "items-start"} flex flex-col gap-1`}>
-              <div className={`text-[10px] font-semibold uppercase tracking-wider ${
-                msg.role === "user" ? "text-slate-500 text-right" : "text-indigo-600"
-              }`}>
-                {msg.role === "user" ? "Me" : ""}
-                {msg.role === "assistant" && msg.mode && (
-                  <span className="ml-1.5 px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-100 text-indigo-500 text-[8px] font-bold">
-                    {msg.mode}
-                  </span>
-                )}
-              </div>
-              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${
-                msg.role === "user"
+              <div className={`px-4 py-3 rounded-2xl text-sm leading-relaxed ${msg.role === "user"
                   ? "bg-slate-800 text-white rounded-tr-sm"
                   : "bg-white border border-slate-200 text-slate-700 rounded-tl-sm shadow-sm"
-              }`}>
+                }`}>
                 {msg.role === "user"
                   ? <div className="whitespace-pre-wrap">{msg.content}</div>
                   : renderContent(msg, idx)

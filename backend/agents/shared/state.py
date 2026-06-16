@@ -1,44 +1,7 @@
 """
 NotebookState — unified state for all capability workflows.
-ResearchState — LangGraph state for research pipeline.
 """
 from typing import Any, Dict, List, Optional, TypedDict
-
-
-class ResearchState(TypedDict, total=False):
-    """State for research LangGraph workflow (legacy + notebook research mode)."""
-
-    query: str
-    top_k: int
-    source: Optional[str]
-    doc_ids: Optional[List[str]]
-    use_multi_doc: bool
-    conversation_context: str
-
-    chunks: List[str]
-    sources: List[str]
-    num_chunks_found: int
-    searched_docs: List[str]
-
-    initial_summary: str
-    critique: str
-    has_gaps: bool
-    suggestions: List[str]
-    final_answer: str
-    editing_applied: bool
-
-    workflow_log: List[str]
-    status: str
-    error_message: Optional[str]
-
-    research_complete: bool
-    summary_complete: bool
-    critique_complete: bool
-    editor_complete: bool
-
-
-# Backward-compatible alias
-AgentState = ResearchState
 
 
 class RetrievalItem(TypedDict, total=False):
@@ -65,6 +28,15 @@ class CitationItem(TypedDict, total=False):
     chunk_text: str
 
 
+class LearnerProfile(TypedDict, total=False):
+    """Structured learner profile for personalized roadmap generation."""
+    goal: str           # e.g. "AWS Certification", "Job readiness", "Research"
+    level: str          # "beginner" | "intermediate" | "advanced"
+    hours_per_day: float  # e.g. 2.0
+    preference: str     # "theory" | "practice" | "mixed" | "video"
+    start_date: str     # ISO date string, e.g. "2025-01-20"
+
+
 class NotebookState(TypedDict, total=False):
   # Notebook context
   notebook_id: str
@@ -80,6 +52,9 @@ class NotebookState(TypedDict, total=False):
   conversation_summary: str
   recent_messages: List[Dict[str, Any]]
 
+  # Learner profile (for roadmap mode)
+  learner_profile: Optional[Dict[str, Any]]
+
   # Retrieval
   chunks: List[str]
   sources: List[str]
@@ -90,6 +65,14 @@ class NotebookState(TypedDict, total=False):
   rewritten_query: str
   query_intent: str
   needs_retrieval: bool
+
+  # Multi-Agent Roadmap Pipeline
+  knowledge_graph: Optional[Dict[str, Any]]   # ContentAnalyzer output
+  assessment_result: Optional[Dict[str, Any]] # Assessment output
+  syllabus: Optional[Dict[str, Any]]          # SyllabusArchitect output
+  daily_schedule: Optional[Dict[str, Any]]    # Scheduler output
+  enriched_milestones: Optional[List[Dict[str, Any]]]  # ResourceQuiz output
+  ics_content: Optional[str]                  # iCalendar string
 
   # Research pipeline
   initial_summary: str
@@ -121,6 +104,7 @@ def create_initial_state(
   doc_ids: Optional[List[str]] = None,
   top_k: int = 5,
   conversation_context: str = "",
+  learner_profile: Optional[Dict[str, Any]] = None,
 ) -> NotebookState:
   return NotebookState(
     notebook_id=notebook_id,
@@ -133,6 +117,7 @@ def create_initial_state(
     conversation_messages=[],
     conversation_summary="",
     recent_messages=[],
+    learner_profile=learner_profile,
     chunks=[],
     sources=[],
     retrieved_context=[],
@@ -142,6 +127,12 @@ def create_initial_state(
     rewritten_query=user_query,
     query_intent="factual_query",
     needs_retrieval=True,
+    knowledge_graph=None,
+    assessment_result=None,
+    syllabus=None,
+    daily_schedule=None,
+    enriched_milestones=None,
+    ics_content=None,
     initial_summary="",
     critique="",
     has_gaps=False,

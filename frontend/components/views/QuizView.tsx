@@ -121,13 +121,12 @@ function QuizCard({
               onClick={() => onSelect(key)}
               className={`flex items-start gap-3 px-4 py-3 rounded-xl border text-sm transition-all text-left ${getOptionStyle(key)}`}
             >
-              <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 border ${
-                key === question.correct_answer && isAnswered
-                  ? "bg-emerald-500 text-white border-emerald-500"
-                  : key === answer.selected && key !== question.correct_answer && isAnswered
+              <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-[11px] font-bold shrink-0 border ${key === question.correct_answer && isAnswered
+                ? "bg-emerald-500 text-white border-emerald-500"
+                : key === answer.selected && key !== question.correct_answer && isAnswered
                   ? "bg-red-500 text-white border-red-500"
                   : "bg-slate-100 text-slate-600 border-slate-200"
-              }`}>
+                }`}>
                 {key}
               </span>
               <span className="flex-1 leading-relaxed">{question.options[key]}</span>
@@ -249,26 +248,11 @@ export default function QuizView({
     );
   }
 
-  // Processing state
-  if (isProcessing && !quizData) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="text-center">
-          <div className="w-14 h-14 rounded-2xl bg-emerald-100 flex items-center justify-center mx-auto mb-4">
-            <RefreshCw className="w-7 h-7 text-emerald-600 animate-spin" />
-          </div>
-          <p className="text-sm font-semibold text-slate-700 mb-1">Đang tạo câu hỏi trắc nghiệm...</p>
-          <p className="text-xs text-slate-400">AI đang phân tích tài liệu để sinh quiz</p>
-        </div>
-      </div>
-    );
-  }
-
   // No valid quiz JSON — fallback to plain text
   if (!quizData && lastAssistantMsg) {
     return (
       <div className="flex-1 overflow-y-auto p-6">
-        <div className="max-w-2xl mx-auto">
+        <div className="max-w-4xl mx-auto">
           <div className="p-5 rounded-2xl border border-amber-200 bg-amber-50 text-sm text-amber-700 mb-4">
             <strong>Lưu ý:</strong> Phản hồi từ AI không phải định dạng JSON quiz chuẩn. Hiển thị dưới dạng văn bản.
           </div>
@@ -285,7 +269,7 @@ export default function QuizView({
 
   return (
     <div className="flex-1 overflow-y-auto p-4">
-      <div className="max-w-2xl mx-auto space-y-4">
+      <div className="max-w-4xl mx-auto space-y-4">
         {/* Progress Header */}
         <div className="sticky top-0 z-10 bg-[#FAF9F6]/95 backdrop-blur-sm pb-3 pt-1">
           <div className="p-3.5 rounded-xl border border-slate-200 bg-white shadow-sm flex items-center gap-4">
