@@ -25,16 +25,48 @@ interface QuickPrompt {
   label: string;
 }
 
+interface Attachment {
+  type: string;
+  content: string;
+}
+
+interface SourceReference {
+  page?: number;
+  section?: string;
+  note?: string;
+}
+
+interface OnFailureTool {
+  tool_name: string;
+  query: string;
+}
+
+interface MetaTools {
+  source_reference?: SourceReference;
+  on_failure_tools?: OnFailureTool[];
+}
+
 interface QuizQuestion {
   id: number;
   question: string;
+  question_type?: string;
+  has_attachment?: boolean;
+  attachment?: Attachment;
   options: { A: string; B: string; C: string; D: string };
   correct_answer: string;
   explanation: string;
+  meta_tools?: MetaTools;
+}
+
+interface ExternalQuiz {
+  title: string;
+  url: string;
+  snippet: string;
 }
 
 interface QuizData {
-  questions: QuizQuestion[];
+  questions?: QuizQuestion[];
+  external_quizzes?: ExternalQuiz[];
 }
 
 interface QuizViewProps {
@@ -49,11 +81,14 @@ interface QuizViewProps {
 function parseQuizJson(content: string): QuizData | null {
   // Try to extract JSON from code block or raw
   const jsonMatch = content.match(/```(?:json)?\s*([\s\S]*?)```/) ||
-    content.match(/(\{[\s\S]*"questions"[\s\S]*\})/);
+    content.match(/(\{[\s\S]*("questions"|"external_quizzes")[\s\S]*\})/);
   if (!jsonMatch) return null;
   try {
     const parsed = JSON.parse(jsonMatch[1].trim());
-    if (parsed.questions && Array.isArray(parsed.questions)) return parsed as QuizData;
+    if ((parsed.questions && Array.isArray(parsed.questions)) || 
+        (parsed.external_quizzes && Array.isArray(parsed.external_quizzes))) {
+      return parsed as QuizData;
+    }
     return null;
   } catch {
     return null;
@@ -69,6 +104,7 @@ function QuizCard({
   answer,
   onSelect,
   onReveal,
+  onSendMessage,
 }: {
   question: QuizQuestion;
   qIdx: number;
@@ -76,6 +112,7 @@ function QuizCard({
   answer: AnswerState;
   onSelect: (opt: string) => void;
   onReveal: () => void;
+  onSendMessage: (text: string) => void;
 }) {
   const optionKeys: ("A" | "B" | "C" | "D")[] = ["A", "B", "C", "D"];
 
@@ -111,6 +148,20 @@ function QuizCard({
       {/* Question */}
       <div className="px-5 py-4">
         <p className="text-sm font-semibold text-slate-900 leading-relaxed mb-4">{question.question}</p>
+
+        {question.has_attachment && question.attachment && (
+          <div className="mb-4">
+            {question.attachment.type === "code_snippet" ? (
+              <pre className="bg-slate-900 text-slate-50 p-3 rounded-xl overflow-x-auto text-xs font-mono">
+                <code>{question.attachment.content}</code>
+              </pre>
+            ) : (
+              <div className="bg-slate-100 p-3 rounded-xl text-sm italic text-slate-600">
+                {question.attachment.content}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Options */}
         <div className="grid grid-cols-1 gap-2.5 mb-4">
@@ -149,11 +200,42 @@ function QuizCard({
             <Eye className="w-3.5 h-3.5" /> Hiện đáp án & giải thích
           </button>
         ) : (
-          <div className="mt-3 p-3.5 rounded-xl bg-slate-50 border border-slate-200">
-            <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
-              <EyeOff className="w-3 h-3" /> Giải thích
+          <div className="mt-3 space-y-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5 flex items-center gap-1">
+                <EyeOff className="w-3 h-3" /> Giải thích
+              </div>
+              <p className="text-xs text-slate-700 leading-relaxed">{question.explanation}</p>
             </div>
-            <p className="text-xs text-slate-700 leading-relaxed">{question.explanation}</p>
+            {answer.selected && answer.selected !== question.correct_answer && question.meta_tools && (
+              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200">
+                {question.meta_tools.source_reference && (
+                  <div className="mb-3">
+                    <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
+                      <Layers className="w-3.5 h-3.5" /> 
+                      {question.meta_tools.source_reference.note || "Đọc lại tài liệu:"}
+                    </p>
+                    <p className="text-xs text-amber-700 mt-1">
+                      {question.meta_tools.source_reference.page && `Trang ${question.meta_tools.source_reference.page}`}
+                      {question.meta_tools.source_reference.section && ` - ${question.meta_tools.source_reference.section}`}
+                    </p>
+                  </div>
+                )}
+                {question.meta_tools.on_failure_tools && question.meta_tools.on_failure_tools.length > 0 && (
+                  <div className="flex flex-wrap gap-2">
+                    {question.meta_tools.on_failure_tools.map((tool, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => onSendMessage(`@${tool.tool_name}: ${tool.query}`)}
+                        className="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-amber-300 text-amber-700 hover:bg-amber-100 transition-colors cursor-pointer flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3 h-3" /> {tool.tool_name}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -172,10 +254,32 @@ export default function QuizView({
   const [answers, setAnswers] = useState<Record<string, AnswerState>>({});
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Find the last assistant message with quiz data
-  const lastAssistantMsg = [...messages].reverse().find((m) => m.role === "assistant") ?? null;
-  const quizData = lastAssistantMsg ? parseQuizJson(lastAssistantMsg.content) : null;
-  const quizKey = lastAssistantMsg?.content.slice(0, 40) ?? "";
+  // Find the last assistant message and aggregate quiz data
+  let lastAssistantMsg: any = null;
+  const aggregatedQuizData: QuizData = { questions: undefined, external_quizzes: undefined };
+  let hasParsedSomething = false;
+
+  const reversedMessages = [...messages].reverse();
+  for (const msg of reversedMessages) {
+    if (msg.role === "assistant") {
+      if (!lastAssistantMsg) lastAssistantMsg = msg;
+      
+      const parsed = parseQuizJson(msg.content);
+      if (parsed) {
+        hasParsedSomething = true;
+        if (parsed.external_quizzes && aggregatedQuizData.external_quizzes === undefined) {
+          aggregatedQuizData.external_quizzes = parsed.external_quizzes;
+        }
+        if (parsed.questions && aggregatedQuizData.questions === undefined) {
+          aggregatedQuizData.questions = parsed.questions;
+          break; // Stop scanning once we find the main questions block
+        }
+      }
+    }
+  }
+
+  const quizData = hasParsedSomething ? aggregatedQuizData : null;
+  const quizKey = quizData?.questions?.[0]?.question?.slice(0, 40) ?? lastAssistantMsg?.content.slice(0, 40) ?? "";
 
   // Reset answers when quiz content changes
   useEffect(() => {
@@ -204,9 +308,9 @@ export default function QuizView({
     answers[qId] ?? { selected: null, revealed: false };
 
   // Progress stats
-  const totalQ = quizData?.questions.length ?? 0;
+  const totalQ = quizData?.questions?.length ?? 0;
   const answeredQ = Object.keys(answers).length;
-  const correctQ = quizData?.questions.filter(
+  const correctQ = quizData?.questions?.filter(
     (q) => answers[q.id]?.selected === q.correct_answer
   ).length ?? 0;
 
@@ -313,8 +417,50 @@ export default function QuizView({
           </div>
         </div>
 
+        {/* Knowledge Gap Banner */}
+        {answeredQ - correctQ >= 3 && answeredQ < totalQ && (
+          <div className="p-3.5 rounded-xl border border-red-200 bg-red-50 shadow-sm flex items-start gap-3">
+            <XCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm font-bold text-red-800">Cảnh báo lỗ hổng kiến thức</p>
+              <p className="text-xs text-red-700 mt-1 mb-2">Bạn đã trả lời sai {answeredQ - correctQ} câu. Hệ thống đề xuất ghi nhận lỗ hổng để tập trung ôn tập sau.</p>
+              <button
+                onClick={() => onSendMessage("@log_knowledge_gap: Ghi nhận lỗ hổng kiến thức hiện tại")}
+                className="text-[10px] font-semibold px-2.5 py-1.5 rounded-lg bg-white border border-red-300 text-red-700 hover:bg-red-100 transition-colors cursor-pointer flex items-center gap-1"
+              >
+                <Layers className="w-3 h-3" /> Ghi nhận lỗ hổng
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* External Quizzes Search Results */}
+        {quizData.external_quizzes && quizData.external_quizzes.length > 0 && (
+          <div className="mb-6">
+            <h3 className="text-sm font-bold text-slate-800 mb-3 flex items-center gap-2">
+              <Layers className="w-4 h-4 text-indigo-500" />
+              Đề Trắc Nghiệm Tham Khảo
+            </h3>
+            <div className="grid grid-cols-1 gap-3">
+              {quizData.external_quizzes.map((quiz, idx) => (
+                <a
+                  key={idx}
+                  href={quiz.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="block p-4 rounded-xl border border-slate-200 bg-white hover:border-indigo-300 hover:shadow-sm transition-all"
+                >
+                  <h4 className="text-sm font-bold text-indigo-700 mb-1">{quiz.title}</h4>
+                  <p className="text-xs text-slate-600 line-clamp-2">{quiz.snippet}</p>
+                  <div className="mt-2 text-[10px] text-slate-400 font-mono truncate">{quiz.url}</div>
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Quiz Cards */}
-        {quizData.questions.map((question, qIdx) => (
+        {quizData.questions && quizData.questions.map((question, qIdx) => (
           <QuizCard
             key={question.id}
             question={question}
@@ -323,6 +469,7 @@ export default function QuizView({
             answer={getAnswerState(question.id)}
             onSelect={(opt) => handleSelect(question.id, opt)}
             onReveal={() => handleReveal(question.id)}
+            onSendMessage={onSendMessage}
           />
         ))}
 
@@ -331,16 +478,38 @@ export default function QuizView({
           <div className="p-5 rounded-2xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white text-center">
             <Trophy className="w-8 h-8 text-amber-500 mx-auto mb-2" />
             <p className="font-bold text-slate-900 mb-1">Hoàn thành!</p>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 mb-4">
               Bạn trả lời đúng <strong className="text-emerald-600">{correctQ}/{totalQ}</strong> câu hỏi
               {" "}({Math.round((correctQ / totalQ) * 100)}% chính xác).
             </p>
-            <button
-              onClick={() => setAnswers({})}
-              className="mt-3 flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all mx-auto cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Làm lại
-            </button>
+
+            {Math.round((correctQ / totalQ) * 100) < 50 && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-left text-sm text-red-700 max-w-md mx-auto">
+                <p className="font-semibold flex items-center gap-1.5"><XCircle className="w-4 h-4" /> Cảnh báo: Điểm dưới 50%</p>
+                <p className="mt-1 mb-2">Hệ thống đề xuất khởi động điều chỉnh lộ trình để bạn ôn tập thêm.</p>
+                <button
+                  onClick={() => onSendMessage("@trigger_roadmap_adaptation: Cập nhật lộ trình ôn tập")}
+                  className="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-800 rounded-lg text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <RefreshCw className="w-3 h-3" /> Cập nhật lộ trình
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <button
+                onClick={() => setAnswers({})}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-all cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" /> Làm lại
+              </button>
+              <button
+                onClick={() => onSendMessage(`@search_external_quizzes: Tìm đề trắc nghiệm mở rộng về ${notebookTitle}`)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700 transition-all cursor-pointer"
+              >
+                <Layers className="w-3.5 h-3.5" /> Tìm đề trên mạng
+              </button>
+            </div>
           </div>
         )}
 

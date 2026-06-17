@@ -490,6 +490,49 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
         conversation_memory.create_session(session_id)
 
     conversation_memory.add_message(session_id, "user", req.query)
+
+    # Intercept tool command
+    if req.query.startswith("@search_external_quizzes:"):
+        # Get recent history to understand context
+        history = conversation_memory.get_history(session_id, limit=6)
+        # Exclude the current command itself for context if needed, but it's fine.
+        history_text = "\n".join([f"{msg['role']}: {msg['content'][:800]}" for msg in history[:-1] if msg['role'] in ('user', 'assistant')])
+        
+        prompt = f"""Dựa vào lịch sử trò chuyện ngắn dưới đây (đặc biệt là yêu cầu gốc của người dùng và các câu trắc nghiệm AI đã sinh ra), hãy xác định chính xác chủ đề, phạm vi kiến thức cốt lõi.
+Lịch sử:
+{history_text}
+
+Nhiệm vụ: Tạo ra một câu truy vấn tìm kiếm siêu ngắn gọn (tối đa 5-8 từ) để tìm các đề trắc nghiệm tương tự trên mạng. (VD: "trắc nghiệm lịch sử việt nam thế kỷ 19", "quiz chu trình krebs sinh học").
+Lưu ý: CHỈ trả về đúng câu truy vấn tìm kiếm, không giải thích gì thêm, không dùng dấu ngoặc kép.
+"""
+        api_logger.info("Calling LLM to generate optimized quiz search query...")
+        optimized_query, _ = chat_complete(
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.2
+        )
+        optimized_query = optimized_query.strip(' \n"')
+        api_logger.info(f"Optimized search query: {optimized_query}")
+        
+        from tools.quiz_search_tool import search_external_quizzes
+        results = search_external_quizzes(optimized_query)
+        
+        import json
+        answer_json = json.dumps({"external_quizzes": results}, ensure_ascii=False)
+        answer = f"```json\n{answer_json}\n```"
+        
+        conversation_memory.add_message(
+            session_id,
+            "assistant",
+            answer,
+            metadata={"mode": req.mode, "notebook_id": notebook_id}
+        )
+        return {
+            "answer": answer,
+            "sources": [],
+            "workflow_log": [f"[QuizTool] Generated query: {optimized_query}", "[QuizTool] Fetched external quizzes"],
+            "session_id": session_id,
+            "status": "complete"
+        }
     history = conversation_memory.get_history(session_id, limit=16)
     memory_payload = build_memory_payload(history)
 

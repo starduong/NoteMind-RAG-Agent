@@ -18,6 +18,12 @@ Generate 5 multiple-choice questions. You MUST return ONLY a valid JSON object w
     {{
       "id": 1,
       "question": "question text",
+      "question_type": "multiple_choice",
+      "has_attachment": false,
+      "attachment": {{
+        "type": "code_snippet",
+        "content": "optional content here if has_attachment is true"
+      }},
       "options": {{
         "A": "option A text",
         "B": "option B text",
@@ -25,7 +31,24 @@ Generate 5 multiple-choice questions. You MUST return ONLY a valid JSON object w
         "D": "option D text"
       }},
       "correct_answer": "A",
-      "explanation": "brief explanation grounded in the context"
+      "explanation": "brief explanation grounded in the context",
+      "meta_tools": {{
+        "source_reference": {{
+          "page": 1,
+          "section": "Section name",
+          "note": "Read again to understand why A is correct"
+        }},
+        "on_failure_tools": [
+          {{
+            "tool_name": "recommend_youtube_lesson",
+            "query": "topic to search on youtube"
+          }},
+          {{
+            "tool_name": "search_external_quizzes",
+            "query": "topic for external quiz test"
+          }}
+        ]
+      }}
     }}
   ]
 }}"""

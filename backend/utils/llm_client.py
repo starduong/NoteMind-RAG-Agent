@@ -1,5 +1,7 @@
+import time
 from typing import Optional
 
+import openai
 from openai import OpenAI
 
 from config import (
@@ -95,6 +97,7 @@ def chat_complete(
     temperature: float = 0.3,
     provider: Optional[str] = None,
     response_format: Optional[dict] = None,
+    max_retries: int = 3,
 ) -> tuple[str, Optional[object]]:
     """
     Chat completion via OpenAI-compatible providers. Returns (content, usage_or_none).
@@ -111,11 +114,20 @@ def chat_complete(
     if response_format:
         kwargs["response_format"] = response_format
 
-    response = client.chat.completions.create(**kwargs)
-
-    content = response.choices[0].message.content or ""
-    usage = getattr(response, "usage", None)
-    return content, usage
+    for attempt in range(max_retries):
+        try:
+            response = client.chat.completions.create(**kwargs)
+            content = response.choices[0].message.content or ""
+            usage = getattr(response, "usage", None)
+            return content, usage
+        except (openai.RateLimitError, openai.InternalServerError) as e:
+            if attempt < max_retries - 1:
+                wait_time = 2 ** attempt
+                api_logger.warning(f"LLM API error (attempt {attempt+1}): {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+            else:
+                api_logger.error(f"LLM API failed after {max_retries} attempts.")
+                raise e
 
 
 def generate_text(
