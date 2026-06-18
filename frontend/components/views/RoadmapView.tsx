@@ -8,7 +8,7 @@ import {
   FlaskConical, BookMarked, HelpCircle
 } from "lucide-react";
 
-type Mode = "chat" | "research" | "quiz" | "roadmap";
+type Mode = "chat" | "quiz" | "roadmap";
 
 interface Message {
   role: "user" | "assistant";

@@ -97,6 +97,13 @@ Rules:
 3. Never invent citation IDs or sources.
 4. If the answer is not in the context, say "This information is not found in the document."
 5. Keep citations inline, for example: "YOLOv8 is faster [A]."
+6. Format Requirement: You MUST format your entire response using standard Markdown (CommonMark/GitHub Flavored Markdown).
+   - Do NOT return plain, unstructured text.
+   - Use headings (## or ###) to structure your response.
+   - Use bullet points (* or -) or numbered lists for breaking down information.
+   - Enclose code or commands in code blocks (```).
+   - Use tables when comparing data or presenting structured relationships.
+   - Ensure the structure is clear and visually organized for frontend rendering.
 
 Your answer:"""
 

@@ -65,6 +65,14 @@ def search_github_repositories(topic: str, limit: int = 3) -> list:
                 "description": (item.get("description") or "")[:200],
                 "url": item.get("html_url", ""),
             })
+            
+        if not repos:
+            # Fallback: remove non-ascii (keep English tech keywords)
+            fallback = "".join(c for c in topic if ord(c) < 128).strip()
+            fallback = " ".join(fallback.split()) # collapse spaces
+            if fallback and fallback != topic:
+                agent_logger.info(f"[GitHubTool] No results for '{topic}', fallback to '{fallback}'")
+                return search_github_repositories(fallback, limit)
 
         agent_logger.info(f"[GitHubTool] Found {len(repos)} repos for topic='{topic}'")
         return repos

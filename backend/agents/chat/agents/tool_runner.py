@@ -67,12 +67,17 @@ def _extract_main_concept(query: str) -> str:
     Strips common filler words to get a clean search term.
     """
     stop_words = re.compile(
-        r"\b(là gì|nghĩa là|giải thích|khái niệm|bài báo về|paper về|"
-        r"code cho|repo về|video về|hướng dẫn|tutorial|có thể|"
-        r"mình muốn|tôi muốn|cho mình|giúp tôi)\b",
+        r"\b(là gì|nghĩa là|giải thích|khái niệm|định nghĩa|la gi|nghia la|giai thich|khai niem|dinh nghia|"
+        r"bài báo về|paper về|bài báo|paper đầu tiên về|paper|"
+        r"code cho|repo về|source code về|code về|mã nguồn|source code|"
+        r"video về|bài giảng về|hướng dẫn|tutorial|bai giang|"
+        r"có thể|mình muốn|tôi muốn|cho mình|giúp tôi|trên|wikipedia|youtube|github|cua|tren)\b",
         re.IGNORECASE,
     )
-    cleaned = stop_words.sub("", query).strip(" ?.,!:")
+    cleaned = stop_words.sub("", query).strip(" ?.,!:'\"")
+    # Strip some common Vietnamese prefixes and suffixes (both accented and unaccented)
+    cleaned = re.sub(r"^(về|cho|ve)\s+", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s+(mẫu|đơn giản|chi tiết|trên|của|mau|don gian|chi tiet)$", "", cleaned, flags=re.IGNORECASE)
     # Collapse extra spaces
     cleaned = re.sub(r"\s+", " ", cleaned).strip()
     return cleaned or query

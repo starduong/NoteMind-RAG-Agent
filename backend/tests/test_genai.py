@@ -17,9 +17,9 @@ print("⚡ Đang kết nối tới Google AI Studio...")
 client = genai.Client(api_key=api_key)
 
 try:
-    # 2. Gọi model gemini-3.5-flash với câu hỏi đơn giản
+    # 2. Gọi model gemini-2.5-flash với câu hỏi đơn giản
     response = client.models.generate_content(
-        model="gemini-3.5-flash",
+        model="gemini-2.5-flash",
         contents="Hello! Bạn có nghe rõ không? Hãy phản hồi ngắn gọn bằng tiếng Việt.",
     )
 

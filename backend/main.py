@@ -489,7 +489,12 @@ async def ask_notebook(notebook_id: str, req: NotebookAskRequest):
     elif not conversation_memory.session_exists(session_id):
         conversation_memory.create_session(session_id)
 
-    conversation_memory.add_message(session_id, "user", req.query)
+    conversation_memory.add_message(
+        session_id, 
+        "user", 
+        req.query,
+        metadata={"mode": req.mode, "notebook_id": notebook_id}
+    )
 
     # Intercept tool command
     if req.query.startswith("@search_external_quizzes:"):

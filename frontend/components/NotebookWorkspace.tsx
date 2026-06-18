@@ -56,9 +56,10 @@ const MODES = [
 
 const QUICK_PROMPTS: Record<Mode, { text: string; label: string }[]> = {
   chat: [
-    { text: "Tóm tắt ngắn gọn các luận điểm chính trong tài liệu.", label: "Tóm tắt chính" },
-    { text: "Có những nội dung nào đề cập đến ngân sách hay kế hoạch tài chính?", label: "Phân tích tài chính" },
-    { text: "Rút ra 5 điều cốt lõi tôi cần nhớ từ nguồn này.", label: "5 bài học cốt lõi" }
+    {
+      text: "Tóm tắt ngắn gọn các luận điểm chính và cấu trúc cốt lõi của tài liệu này.",
+      label: "Tổng quan nhanh"
+    },
   ],
   quiz: [
     { text: "Tạo 5 câu hỏi trắc nghiệm kèm đáp án để kiểm tra kiến thức.", label: "Tạo Quiz trắc nghiệm" },
@@ -414,21 +415,6 @@ export default function NotebookWorkspace() {
             })}
           </div>
         </div>
-
-        {/* Processing */}
-        {isProcessing && (
-          <div className="px-4 py-2 bg-gradient-to-r from-indigo-50/80 to-purple-50/80 border-b border-indigo-100 shrink-0">
-            <div className="flex items-center gap-3">
-              <div className="w-7 h-7 rounded-full bg-indigo-100 flex items-center justify-center animate-pulse">
-                <RefreshCw className="w-3.5 h-3.5 text-indigo-600 animate-spin" />
-              </div>
-              <div>
-                <p className="text-xs font-semibold text-indigo-700">Processing your request...</p>
-                <p className="text-[10px] text-indigo-500">AI is analyzing your documents</p>
-              </div>
-            </div>
-          </div>
-        )}
 
         {/* View */}
         <div className="flex-1 overflow-y-auto min-h-0">

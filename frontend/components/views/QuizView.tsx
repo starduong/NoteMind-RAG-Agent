@@ -4,7 +4,7 @@ import {
   RefreshCw, Trophy, ChevronRight, RotateCcw
 } from "lucide-react";
 
-type Mode = "chat" | "research" | "quiz" | "roadmap";
+type Mode = "chat" | "quiz" | "roadmap";
 
 interface Message {
   role: "user" | "assistant";
@@ -85,8 +85,8 @@ function parseQuizJson(content: string): QuizData | null {
   if (!jsonMatch) return null;
   try {
     const parsed = JSON.parse(jsonMatch[1].trim());
-    if ((parsed.questions && Array.isArray(parsed.questions)) || 
-        (parsed.external_quizzes && Array.isArray(parsed.external_quizzes))) {
+    if ((parsed.questions && Array.isArray(parsed.questions)) ||
+      (parsed.external_quizzes && Array.isArray(parsed.external_quizzes))) {
       return parsed as QuizData;
     }
     return null;
@@ -212,7 +212,7 @@ function QuizCard({
                 {question.meta_tools.source_reference && (
                   <div className="mb-3">
                     <p className="text-xs font-semibold text-amber-800 flex items-center gap-1.5">
-                      <Layers className="w-3.5 h-3.5" /> 
+                      <Layers className="w-3.5 h-3.5" />
                       {question.meta_tools.source_reference.note || "Đọc lại tài liệu:"}
                     </p>
                     <p className="text-xs text-amber-700 mt-1">
@@ -263,7 +263,7 @@ export default function QuizView({
   for (const msg of reversedMessages) {
     if (msg.role === "assistant") {
       if (!lastAssistantMsg) lastAssistantMsg = msg;
-      
+
       const parsed = parseQuizJson(msg.content);
       if (parsed) {
         hasParsedSomething = true;

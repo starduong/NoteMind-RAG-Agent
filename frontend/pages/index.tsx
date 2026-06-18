@@ -144,7 +144,7 @@ export default function Home() {
       const notebooksList: Notebook[] = notebooksRes.data.notebooks || [];
       const notebooksMap: Record<string, string> = {};
       const notebookSourceMap: Record<string, number> = {};
-      
+
       notebooksList.forEach((nb) => {
         notebooksMap[nb.notebook_id] = nb.title;
         notebookSourceMap[nb.notebook_id] = nb.source_count || 0;
@@ -292,7 +292,7 @@ export default function Home() {
         className="group cursor-pointer bg-white border border-slate-200 rounded-2xl p-6 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:border-indigo-200 relative overflow-hidden"
       >
         <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-indigo-50 to-purple-50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity duration-500 -mr-8 -mt-8" />
-        
+
         <div className="relative">
           <div className="flex items-start justify-between gap-3 mb-4">
             <div className={`p-2.5 rounded-xl ${pastel}`}>
@@ -338,7 +338,7 @@ export default function Home() {
           <h3 className="text-base font-bold text-slate-900 truncate leading-tight">
             {session.notebookTitle}
           </h3>
-          
+
           <div className="mt-2 flex items-center gap-1.5">
             <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${modeInfo.className}`}>
               {modeInfo.label}
@@ -380,27 +380,27 @@ export default function Home() {
           <div className={`p-2 rounded-lg ${pastel}`}>
             <ModeIcon className="w-4 h-4" />
           </div>
-          
+
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-slate-900 truncate">{session.notebookTitle}</p>
             <p className="text-xs text-slate-500 mt-0.5">
               {session.sourceCount} sources • {formatDateTime(session.createdAt)}
             </p>
           </div>
-          
+
           <span className={`text-[10px] font-medium px-2.5 py-1 rounded-full border ${modeInfo.className} flex items-center gap-1.5`}>
             <ModeIcon className="w-3 h-3" />
             {modeInfo.label}
           </span>
-          
+
           <span className="text-xs text-slate-600 font-medium">
             {session.messageCount}
           </span>
-          
+
           <span className="text-xs text-slate-500 whitespace-nowrap">
             {timeAgo(session.lastUpdated)}
           </span>
-          
+
           <div className="relative">
             <button
               onClick={(e) => {
@@ -447,7 +447,7 @@ export default function Home() {
       <header className="sticky top-0 z-30 border-b border-slate-200/80 bg-white/95 backdrop-blur-xl shadow-sm">
         <div className="max-w-7xl mx-auto px-6 py-4 flex flex-wrap gap-3 items-center justify-between">
           {/* Logo với gradient text giống NotebookWorkspace */}
-          <div 
+          <div
             onClick={() => router.push("/")}
             className="flex items-center gap-3 cursor-pointer group transition-all hover:scale-105"
           >
@@ -486,11 +486,10 @@ export default function Home() {
               <button
                 key={type}
                 onClick={() => setViewType(type)}
-                className={`p-2 rounded-md transition-all ${
-                  viewType === type 
-                    ? "bg-indigo-100 text-indigo-700 shadow-sm" 
+                className={`p-2 rounded-md transition-all ${viewType === type
+                    ? "bg-indigo-100 text-indigo-700 shadow-sm"
                     : "text-slate-500 hover:bg-slate-100"
-                }`}
+                  }`}
                 title={`${type} view`}
               >
                 {type === "grid" ? <Grid3X3 className="w-4 h-4" /> : <List className="w-4 h-4" />}
@@ -511,7 +510,6 @@ export default function Home() {
                 <FolderOpen className="w-8 h-8 text-slate-400" />
               </div>
               <p className="text-sm font-medium text-slate-700">No sessions found</p>
-              <p className="text-xs text-slate-500 mt-1">Try adjusting your search or create a new notebook</p>
             </div>
           ) : viewType === "grid" ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -548,7 +546,7 @@ export default function Home() {
                 <X className="w-4 h-4" />
               </button>
             </div>
-            
+
             <div className="space-y-3">
               <input
                 value={newNotebookTitle}
@@ -558,7 +556,7 @@ export default function Home() {
                 className="w-full h-11 px-4 rounded-xl border border-slate-200 bg-slate-50 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-indigo-100 focus:border-indigo-300 transition-all"
                 autoFocus
               />
-              
+
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   onClick={() => setShowCreateModal(false)}

@@ -45,13 +45,13 @@ LLM_REASONING_MODEL = os.getenv(
 LLM_LONG_CONTEXT_PROVIDER = os.getenv("LLM_LONG_CONTEXT_PROVIDER", "google")
 LLM_LONG_CONTEXT_MODEL = os.getenv(
     "LLM_LONG_CONTEXT_MODEL",
-    "gemini-3.5-flash",
+    "gemini-2.5-flash",
 )
 
 LLM_STRUCTURED_PROVIDER = os.getenv("LLM_STRUCTURED_PROVIDER", "google")
 LLM_STRUCTURED_MODEL = os.getenv(
     "LLM_STRUCTURED_MODEL",
-    "gemini-3.5-flash",
+    "gemini-2.5-flash",
 )
 
 LLM_UTILITY_PROVIDER = os.getenv("LLM_UTILITY_PROVIDER", "github")
